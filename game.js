@@ -482,17 +482,26 @@ function circleF(cx, cy, rad, fill, border, lw) {
     ctx.fillStyle = fill; ctx.fill();
     ctx.strokeStyle = border; ctx.lineWidth = lw || 2; ctx.stroke();
 }
-// Сум: up = true бол дээш (урагшлах), false бол доош (ухрах). s = өндөр.
-function drawArrow(cx, cy, s, up, col) {
-    const d = up ? -1 : 1, hw = s * 0.46, sw = s * 0.17, head = s * 0.5, top = cy + d * s / 2, base = cy - d * s / 2;
-    const neck = top - d * head;
+// Сум: ang = заах чиглэл (радиан, 0 = баруун, canvas-ийн координат). s = урт.
+function drawArrowAng(cx, cy, s, ang, col) {
+    const hw = s * 0.46, sw = s * 0.17, head = s * 0.5, tip = s / 2, base = -s / 2, neck = tip - head;
+    ctx.save();
+    ctx.translate(cx, cy); ctx.rotate(ang);
     ctx.beginPath();
-    ctx.moveTo(cx, top);
-    ctx.lineTo(cx + hw, neck); ctx.lineTo(cx + sw, neck);
-    ctx.lineTo(cx + sw, base); ctx.lineTo(cx - sw, base);
-    ctx.lineTo(cx - sw, neck); ctx.lineTo(cx - hw, neck);
+    ctx.moveTo(tip, 0);
+    ctx.lineTo(neck, hw); ctx.lineTo(neck, sw);
+    ctx.lineTo(base, sw); ctx.lineTo(base, -sw);
+    ctx.lineTo(neck, -sw); ctx.lineTo(neck, -hw);
     ctx.closePath();
     ctx.fillStyle = col; ctx.fill();
+    ctx.restore();
+}
+// Тайлбар дахь сум: fwd = true бол баруун (урагшлах), false бол зүүн (ухрах)
+const drawArrow = (cx, cy, s, fwd, col) => drawArrowAng(cx, cy, s, fwd ? 0 : Math.PI, col);
+// Замын i-р нүднээс урагш (dir=1) эсвэл хойш (dir=-1) заах чиглэл
+function pathAng(i, dir) {
+    const j = (i + dir + 52) % 52;
+    return Math.atan2(pathR[j] - pathR[i], pathC[j] - pathC[i]);
 }
 function darken(rgb, pct) { return `rgb(${rgb[0]*pct/100|0},${rgb[1]*pct/100|0},${rgb[2]*pct/100|0})`; }
 
@@ -594,10 +603,10 @@ function drawBoard() {
     for (let i = 0; i < 4; i++) {
         const a = advCells[i];
         cellRect(pathR[a], pathC[a], "rgb(180,245,180)");
-        drawArrow(cxpix(pathC[a]), cypix(pathR[a]), 24, true, "rgb(0,125,30)");
+        drawArrowAng(cxpix(pathC[a]), cypix(pathR[a]), 26, pathAng(a, 1), "rgb(0,125,30)");
         const b = retCells[i];
         cellRect(pathR[b], pathC[b], "rgb(255,195,195)");
-        drawArrow(cxpix(pathC[b]), cypix(pathR[b]), 24, false, "rgb(190,20,20)");
+        drawArrowAng(cxpix(pathC[b]), cypix(pathR[b]), 26, pathAng(b, -1), "rgb(190,20,20)");
     }
     for (let i = 0; i < 52; i++) if (safeCell[i]) {
         ctx.beginPath(); ctx.arc(cxpix(pathC[i]), cypix(pathR[i]), CELL / 4, 0, Math.PI * 2);
