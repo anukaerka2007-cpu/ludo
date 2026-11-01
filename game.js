@@ -14,6 +14,7 @@ const MN_INK = "rgb(60,30,10)", MN_WHITE = "rgb(252,246,226)", MN_BLACK = "rgb(0
 const PCOL = [[160, 40, 40], [40, 110, 70], [210, 160, 40], [40, 80, 150]];
 const pColor = PCOL.map(c => `rgb(${c[0]},${c[1]},${c[2]})`);
 const pName = ["Улаан", "Ногоон", "Шар", "Хөх"];
+const pGen = ["Улааны", "Ногооны", "Шарын", "Хөхийн"];      // харьяалах тийн ялгал: «Улааны ээлж»
 const modeName = ["1 vs Компьютер", "2 тоглогч", "3 тоглогч", "4 тоглогч"];
 const FONT = '"Segoe UI","Noto Sans","Roboto",system-ui,Arial,sans-serif';
 
@@ -39,7 +40,7 @@ const isAI = [0, 0, 0, 0];
 let movTok = [], movNew = [], nMov = 0;
 let qIndex = 0, qIsAdvance = 0, qTok = 0, qNewT = 0, qSel = -1, qCorrect = 0;
 let lastK = 0, capFlag = 0;
-let msg = "Улаан-ийн ээлж. ENTER дарж шоо шид.";
+let msg = "Улааны ээлж. ENTER дарж шоо шид.";
 let TIMESCALE = 1;
 
 /* ---- Асуултын сан: урагшлах / ухрах нүдэнд тусдаа дараалал ---- */
@@ -115,7 +116,7 @@ function finalize() {
     const finished = pos[cur][lastK] === 56;
     const extra = dice === 6 || capFlag || finished;
     if (extra) msg = `${pName[cur]} дахин шиднэ! ENTER.`;
-    else { nextPlayer(); sixCount = 0; msg = `${pName[cur]}-ийн ээлж. ENTER.`; }
+    else { nextPlayer(); sixCount = 0; msg = `${pGen[cur]} ээлж. ENTER.`; }
     state = ST_ROLL;
 }
 function afterLand(k, newT) {
@@ -215,7 +216,7 @@ function startGame() {
     if (state !== ST_INTRO) return;
     applyMode();
     state = ST_ROLL;
-    msg = `${pName[cur]}-ийн ээлж. ENTER.`;
+    msg = `${pGen[cur]} ээлж. ENTER.`;
     scheduleAI(); redraw();
 }
 function resetLocal() {
@@ -224,7 +225,7 @@ function resetLocal() {
     for (let i = 0; i < 4; i++) { isActive[i] = 1; isAI[i] = 0; }
     dice = 0; sixCount = 0; winner = -1; capFlag = 0; qSel = -1; cur = 0; nMov = 0; movTok = []; movNew = [];
     state = ST_INTRO;
-    msg = "Улаан-ийн ээлж. ENTER дарж шоо шид.";
+    msg = "Улааны ээлж. ENTER дарж шоо шид.";
 }
 function backToIntro() {
     if (online && online.role === "host") {              // онлайн өрөөндөө буцна (холболт хэвээр)
@@ -364,7 +365,7 @@ function startOnline() {
     o.conns = live; o.started = true;
     resetPositions(); buildPools();
     dice = 0; sixCount = 0; winner = -1; capFlag = 0; qSel = -1; nMov = 0; movTok = []; movNew = [];
-    cur = seats[0]; state = ST_ROLL; msg = `${pName[cur]}-ийн ээлж. ENTER.`;
+    cur = seats[0]; state = ST_ROLL; msg = `${pGen[cur]} ээлж. ENTER.`;
     scheduleAI(); redraw();
 }
 let bcTimer = null;
@@ -427,7 +428,7 @@ function exitOnline() { leaveOnline(); resetLocal(); redraw(); }
 function copyLink() {
     const o = online; if (!o) return;
     const link = roomLink(o.code);
-    const done = () => { o.status = "Холбоос хууллаа. Найзууддаа явуулаарай."; redraw(); };
+    const done = () => { o.status = "Холбоос хуулагдлаа. Найзууддаа явуулаарай."; redraw(); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(done, () => prompt("Холбоос:", link));
     else prompt("Холбоос:", link);
 }
@@ -480,6 +481,18 @@ function circleF(cx, cy, rad, fill, border, lw) {
     ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2);
     ctx.fillStyle = fill; ctx.fill();
     ctx.strokeStyle = border; ctx.lineWidth = lw || 2; ctx.stroke();
+}
+// Сум: up = true бол дээш (урагшлах), false бол доош (ухрах). s = өндөр.
+function drawArrow(cx, cy, s, up, col) {
+    const d = up ? -1 : 1, hw = s * 0.46, sw = s * 0.17, head = s * 0.5, top = cy + d * s / 2, base = cy - d * s / 2;
+    const neck = top - d * head;
+    ctx.beginPath();
+    ctx.moveTo(cx, top);
+    ctx.lineTo(cx + hw, neck); ctx.lineTo(cx + sw, neck);
+    ctx.lineTo(cx + sw, base); ctx.lineTo(cx - sw, base);
+    ctx.lineTo(cx - sw, neck); ctx.lineTo(cx - hw, neck);
+    ctx.closePath();
+    ctx.fillStyle = col; ctx.fill();
 }
 function darken(rgb, pct) { return `rgb(${rgb[0]*pct/100|0},${rgb[1]*pct/100|0},${rgb[2]*pct/100|0})`; }
 
@@ -581,10 +594,10 @@ function drawBoard() {
     for (let i = 0; i < 4; i++) {
         const a = advCells[i];
         cellRect(pathR[a], pathC[a], "rgb(180,245,180)");
-        mnText(cxpix(pathC[a]), cypix(pathR[a]) - 10, "^", 22, "rgb(0,120,0)", 1, 1);
+        drawArrow(cxpix(pathC[a]), cypix(pathR[a]), 24, true, "rgb(0,125,30)");
         const b = retCells[i];
         cellRect(pathR[b], pathC[b], "rgb(255,195,195)");
-        mnText(cxpix(pathC[b]), cypix(pathR[b]) - 10, "v", 22, "rgb(170,0,0)", 1, 1);
+        drawArrow(cxpix(pathC[b]), cypix(pathR[b]), 24, false, "rgb(190,20,20)");
     }
     for (let i = 0; i < 52; i++) if (safeCell[i]) {
         ctx.beginPath(); ctx.arc(cxpix(pathC[i]), cypix(pathR[i]), CELL / 4, 0, Math.PI * 2);
@@ -728,11 +741,13 @@ function drawPanel() {
     } else if (isAI[cur] && state !== ST_OVER) {
         mnText(px, py + 398, "Компьютер бодож байна...", 15, MN_ORN_DK, 0, 0);
     } else if (!myTurn() && state !== ST_OVER) {
-        mnText(px, py + 398, `${pName[cur]}-ийг хүлээж байна...`, 15, MN_ORN_DK, 0, 0);
+        mnText(px, py + 398, `${pGen[cur]} ээлж. Хүлээнэ үү...`, 15, MN_ORN_DK, 0, 0);
     }
     mnText(px, py + 434, "ENTER шоо · 1-4 хүү · ESC цэс", 14, MN_INK, 0, 0);
-    mnText(px, py + 478, "^ ногоон - зөв бол урагшилна", 14, "rgb(0,110,40)", 0, 0);
-    mnText(px, py + 496, "v улаан - буруу бол ухарна", 14, "rgb(160,30,30)", 0, 0);
+    drawArrow(px + 7, py + 486, 14, true, "rgb(0,125,30)");
+    mnText(px + 20, py + 478, "ногоон - зөв бол урагшилна", 14, "rgb(0,110,40)", 0, 0);
+    drawArrow(px + 7, py + 505, 14, false, "rgb(190,20,20)");
+    mnText(px + 20, py + 496, "улаан - буруу бол ухарна", 14, "rgb(160,30,30)", 0, 0);
     drawKnotAt(panelX2 - 26, panelY2 - 26, 30);
 }
 
@@ -745,7 +760,9 @@ function drawQuiz() {
     rectLine(x1 + 6, y1 + 6, x2 - 6, y2 - 6, MN_ORN_DK);
     drawKnotAt(x1 + 20, y1 + 20, 25); drawKnotAt(x2 - 20, y1 + 20, 25);
     drawKnotAt(x1 + 20, y2 - 20, 25); drawKnotAt(x2 - 20, y2 - 20, 25);
-    mnText(x1 + 45, y1 + 14, qIsAdvance ? "УРАГШЛАХ АСУУЛТ (^)" : "УХРАХ АСУУЛТ (v)", 22, pColor[cur], 1, 0);
+    const qTitle = qIsAdvance ? "УРАГШЛАХ АСУУЛТ" : "УХРАХ АСУУЛТ";
+    mnText(x1 + 45, y1 + 14, qTitle, 22, pColor[cur], 1, 0);
+    drawArrow(x1 + 45 + textWidthB(qTitle, 22, 1) + 20, y1 + 26, 22, qIsAdvance, qIsAdvance ? "rgb(0,125,30)" : "rgb(190,20,20)");
     // урт асуултыг хоёр мөр болгож тайрна
     const maxw = x2 - x1 - 90;
     if (textWidthB(q.text, 21, 1) <= maxw) mnText(x1 + 45, y1 + 46, q.text, 21, MN_INK, 1, 0);
@@ -824,11 +841,13 @@ function drawIntro() {
 
     const cy2 = 474, ch = 78;
     fillR(b1x, cy2, b1x + bw, cy2 + ch, "rgb(16,46,26)"); rectLine(b1x, cy2, b1x + bw, cy2 + ch, "rgb(60,150,80)");
-    mnText(b1x + 16, cy2 + 10, "^   УРАГШЛАХ НҮД", 17, "rgb(110,220,130)", 1, 0);
+    drawArrow(b1x + 24, cy2 + 21, 18, true, "rgb(110,220,130)");
+    mnText(b1x + 42, cy2 + 10, "УРАГШЛАХ НҮД", 17, "rgb(110,220,130)", 1, 0);
     mnText(b1x + 18, cy2 + 38, "Зөв хариулвал 4 алхам урагшилна.", 15, TXT, 0, 0);
     mnText(b1x + 18, cy2 + 56, "Буруу бол байрандаа.", 15, SUB, 0, 0);
     fillR(b2x, cy2, b2x + bw, cy2 + ch, "rgb(52,18,20)"); rectLine(b2x, cy2, b2x + bw, cy2 + ch, "rgb(180,70,70)");
-    mnText(b2x + 16, cy2 + 10, "v   УХРАХ НҮД", 17, "rgb(240,130,130)", 1, 0);
+    drawArrow(b2x + 24, cy2 + 21, 18, false, "rgb(240,130,130)");
+    mnText(b2x + 42, cy2 + 10, "УХРАХ НҮД", 17, "rgb(240,130,130)", 1, 0);
     mnText(b2x + 18, cy2 + 38, "Буруу бол 4 алхам ухарна.", 15, TXT, 0, 0);
     mnText(b2x + 18, cy2 + 56, "Зөв бол ухрахгүй.", 15, SUB, 0, 0);
 
