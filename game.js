@@ -16,7 +16,9 @@ const pColor = PCOL.map(c => `rgb(${c[0]},${c[1]},${c[2]})`);
 const pName = ["Улаан", "Ногоон", "Шар", "Хөх"];
 const pGen = ["Улааны", "Ногооны", "Шарын", "Хөхийн"];      // харьяалах тийн ялгал: «Улааны ээлж»
 const modeName = ["1 vs Компьютер", "2 тоглогч", "3 тоглогч", "4 тоглогч"];
-const FONT = '"Segoe UI","Noto Sans","Roboto",system-ui,Arial,sans-serif';
+// Messenger / Facebook / Instagram зэрэг апп доторх хөтөч (WebRTC-г ихэвчлэн хаадаг)
+const IN_APP_BROWSER = /FBAN|FBAV|FB_IAB|Messenger|Instagram|MicroMessenger|Snapchat|Line\//i.test(navigator.userAgent);
+const FONT ='"Segoe UI","Noto Sans","Roboto",system-ui,Arial,sans-serif';
 
 /* ====================== Тоглоомын төлөв ====================== */
 const pathR = PATH_R, pathC = PATH_C;
@@ -272,7 +274,15 @@ const makeCode = () => Array.from({ length: 4 }, () => CODE_CHARS[rnd(CODE_CHARS
 const roomLink = code => location.href.split(/[?#]/)[0] + "?room=" + code;
 const seatPlan = n => n === 2 ? [0, 2] : [0, 1, 2, 3].slice(0, n);
 
-const SIGNAL_ERRORS = ["network", "server-error", "socket-error", "socket-closed"];
+// ICE серверүүд: STUN (шууд холболт) + TURN (шууд холбогдож чадахгүй үед дамжуулагч, ялангуяа мобайл сүлжээнд)
+const PEER_OPTS = { config: { sdpSemantics: "unified-plan", iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun.cloudflare.com:3478" },
+    { urls: ["turn:eu-0.turn.peerjs.com:3478", "turn:us-0.turn.peerjs.com:3478"], username: "peerjs", credential: "peerjsp" },
+    { urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443", "turn:openrelay.metered.ca:443?transport=tcp", "turns:openrelay.metered.ca:443?transport=tcp"],
+      username: "openrelayproject", credential: "openrelayproject" }
+] } };
+const SIGNAL_ERRORS =["network", "server-error", "socket-error", "socket-closed"];
 function netErrText(type) {
     if (SIGNAL_ERRORS.includes(type)) return "Холболтын сервертэй (0.peerjs.com) холбогдож чадсангүй. Сүлжээгээ шалгаад дахин оролдоно уу.";
     if (type === "browser-incompatible") return "Таны браузер онлайн тоглоомыг дэмжихгүй байна.";
@@ -289,17 +299,33 @@ function retryReconnect(o, n) {
         else { o.status = netErrText("network"); if (!o.ready || o.role === "guest") o.failed = true; redraw(); }
     }, 2500);
 }
+// Онлайн байх үед дэлгэц унтарч холболт тасрахаас сэргийлнэ (дэмждэг хөтөч дээр)
+let wakeLock = null;
+async function keepAwake() {
+    try {
+        if (navigator.wakeLock && !wakeLock) {
+            wakeLock = await navigator.wakeLock.request("screen");
+            wakeLock.addEventListener("release", () => { wakeLock = null; });
+        }
+    } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => {            // хуудас буцаж харагдахад дахин холбогдоно
+    if (document.hidden || !online) return;
+    keepAwake();
+    if (online.peer && online.peer.disconnected && online.role === "host") retryReconnect(online, 0);
+});
 function leaveOnline() {
+    if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
     const o = online; online = null;
     if (o) { try { o.peer.destroy(); } catch (e) {} }
 }
 function hostRoom(tries) {
     tries = tries || 0;
     if (typeof Peer === "undefined") { alert("Онлайн сан ачаалагдсангүй. Интернэтээ шалгана уу."); return; }
-    leaveOnline(); resetLocal();
+    leaveOnline(); resetLocal(); keepAwake();
     const code = makeCode();
     const o = online = { role: "host", code, conns: [], seat: 0, status: "Өрөө үүсгэж байна...", ready: false, started: false };
-    const peer = o.peer = new Peer(ROOM_PREFIX + code);
+    const peer = o.peer = new Peer(ROOM_PREFIX + code, PEER_OPTS);
     peer.on("open", () => { if (online !== o) return; o.ready = true; o.status = ""; redraw(); });
     peer.on("error", err => {
         if (online !== o) return;
@@ -384,14 +410,14 @@ function joinRoom(code) {
     code = (code || "").trim().toUpperCase();
     if (!code) return;
     if (typeof Peer === "undefined") { alert("Онлайн сан ачаалагдсангүй. Интернэтээ шалгана уу."); return; }
-    leaveOnline(); resetLocal();
+    leaveOnline(); resetLocal(); keepAwake();
     const o = online = { role: "guest", code, seat: -1, n: 1, idx: 0, status: "Холбогдож байна...", failed: false, connected: false };
-    const peer = o.peer = new Peer();
+    const peer = o.peer = new Peer(PEER_OPTS);
     peer.on("error", err => {
         if (online !== o) return;
         if (o.connected && SIGNAL_ERRORS.includes(err.type)) return;  // холбогдсоны дараа сервер шаардлагагүй
         o.failed = true;
-        o.status = err.type === "peer-unavailable" ? "Өрөө олдсонгүй: " + code : netErrText(err.type);
+        o.status = err.type === "peer-unavailable" ? "Өрөө олдсонгүй: " + code + ". Код зөв эсэхийг шалгаж, хост өрөөний дэлгэцээ нээлттэй байлгана уу." : netErrText(err.type);
         redraw();
     });
     peer.on("disconnected", () => {
@@ -400,6 +426,7 @@ function joinRoom(code) {
     });
     peer.on("open", () => {
         if (online !== o) return;
+        o.brokerOpen = true; o.status = "Серверт холбогдлоо. Хостод холбогдож байна..."; redraw();
         const conn = o.conn = peer.connect(ROOM_PREFIX + code, { reliable: true });
         conn.on("open", () => { if (online !== o) return; o.connected = true; o.status = "Холбогдлоо. Хост эхлүүлэхийг хүлээнэ үү..."; redraw(); });
         conn.on("data", d => onHostData(o, d));
@@ -408,7 +435,14 @@ function joinRoom(code) {
             o.failed = true; o.status = "Хостын холболт тасарлаа."; resetLocal(); redraw();
         });
     });
-    setTimeout(() => { if (online === o && !o.connected && !o.failed) { o.failed = true; o.status = "Холбогдож чадсангүй. Кодыг шалгаад дахин оролдоно уу."; redraw(); } }, 15000);
+    setTimeout(() => {
+        if (online !== o || o.connected || o.failed) return;
+        o.failed = true;
+        o.status = o.brokerOpen
+            ? "Сервертэй холбогдсон ч хост руу шууд холбогдож чадсангүй (сүлжээ хаадаг байж магадгүй). Хоёр төхөөрөмжийг нэг Wi-Fi дээр туршиж үзнэ үү."
+            : "Холболтын серверт хүрч чадсангүй. Сүлжээгээ шалгаад дахин оролдоно уу.";
+        redraw();
+    }, 25000);
     redraw();
 }
 function onHostData(o, d) {
@@ -900,15 +934,28 @@ function drawLobby() {
 
     const n = host ? 1 + o.conns.filter(g => !g.gone).length : o.n;
     const plan = seatPlan(Math.max(n, 2));
-    mnText(W / 2, 338, `ТОГЛОГЧИД (${n}/4)`, 16, GOLD, 1, 1);
-    for (let i = 0; i < n; i++) {
+    const showList = host || o.connected;                    // холбогдохоос өмнө жагсаалт харуулахгүй
+    if (showList) mnText(W / 2, 338, `ТОГЛОГЧИД (${n}/4)`, 16, GOLD, 1, 1);
+    for (let i = 0; i < (showList ? n : 0); i++) {
         const y = 366 + i * 32, s = plan[i];
         fillR(W / 2 - 160, y, W / 2 + 160, y + 28, BOX); rectLine(W / 2 - 160, y, W / 2 + 160, y + 28, GDK);
         circleF(W / 2 - 138, y + 14, 8, pColor[s], "rgb(255,255,255)", 2);
         const me = host ? i === 0 : i === o.idx;
         mnText(W / 2 - 118, y + 4, `${i + 1}. ${pName[s]}${i === 0 ? " (хост)" : ""}${me ? " — Та" : ""}`, 17, TXT, me ? 1 : 0, 0);
     }
-    if (o.status) mnText(W / 2, 506, o.status, 16, o.failed ? "rgb(240,130,130)" : GOLD, 1, 1);
+    if (IN_APP_BROWSER) {
+        mnText(W / 2, 440, "Анхаар: Messenger / Facebook доторх хөтөч онлайн холболтыг хаадаг.", 15, "rgb(240,170,90)", 1, 1);
+        mnText(W / 2, 462, "Баруун дээд буланг (⋯) дараад «Хөтчөөр нээх» (Safari / Chrome) сонгоно уу.", 15, "rgb(240,170,90)", 1, 1);
+    }
+    if (o.status) {                                          // урт мэдэгдлийг хэд хэдэн мөр болгож төвд харуулна
+        let ln = "", y = 494;
+        const col = o.failed ? "rgb(240,130,130)" : GOLD, words = o.status.split(" ");
+        for (const w of words) {
+            const t = ln ? ln + " " + w : w;
+            if (ln && textWidthB(t, 16, 1) > 740) { mnText(W / 2, y, ln, 16, col, 1, 1); y += 22; ln = w; } else ln = t;
+        }
+        if (ln) mnText(W / 2, y, ln, 16, col, 1, 1);
+    }
     if (host && o.ready) {
         if (n >= 2) button(W / 2 - 130, 540, 260, 42, "ЭХЛЭХ", 18, GOLD, KEY, GOLD, startOnline);
         else mnText(W / 2, 552, "Найзаа кодоор нь оруулаад дор хаяж 2 тоглогч болоорой", 15, SUB, 0, 1);
