@@ -282,9 +282,12 @@ const PEER_OPTS = { config: { sdpSemantics: "unified-plan", iceServers: [
     { urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443", "turn:openrelay.metered.ca:443?transport=tcp", "turns:openrelay.metered.ca:443?transport=tcp"],
       username: "openrelayproject", credential: "openrelayproject" }
 ] } };
-const SIGNAL_ERRORS =["network", "server-error", "socket-error", "socket-closed"];
+// Firebase хаяг тохируулсан бол FbPeer (найдвартай), үгүй бол PeerJS (WebRTC)
+const PeerImpl = () => (window.LUDO_FIREBASE_URL && typeof FbPeer !== "undefined") ? FbPeer
+                      : (typeof Peer !== "undefined" ? Peer : null);
+const SIGNAL_ERRORS = ["network", "server-error", "socket-error", "socket-closed"];
 function netErrText(type) {
-    if (SIGNAL_ERRORS.includes(type)) return "Холболтын сервертэй (0.peerjs.com) холбогдож чадсангүй. Сүлжээгээ шалгаад дахин оролдоно уу.";
+    if (SIGNAL_ERRORS.includes(type)) return "Холболтын сервертэй холбогдож чадсангүй. Сүлжээгээ шалгаад дахин оролдоно уу.";
     if (type === "browser-incompatible") return "Таны браузер онлайн тоглоомыг дэмжихгүй байна.";
     return "Алдаа: " + type;
 }
@@ -321,11 +324,11 @@ function leaveOnline() {
 }
 function hostRoom(tries) {
     tries = tries || 0;
-    if (typeof Peer === "undefined") { alert("Онлайн сан ачаалагдсангүй. Интернэтээ шалгана уу."); return; }
+    const P = PeerImpl(); if (!P) { alert("Онлайн сан ачаалагдсангүй. Интернэтээ шалгана уу."); return; }
     leaveOnline(); resetLocal(); keepAwake();
     const code = makeCode();
     const o = online = { role: "host", code, conns: [], seat: 0, status: "Өрөө үүсгэж байна...", ready: false, started: false };
-    const peer = o.peer = new Peer(ROOM_PREFIX + code, PEER_OPTS);
+    const peer = o.peer = new P(ROOM_PREFIX + code, PEER_OPTS);
     peer.on("open", () => { if (online !== o) return; o.ready = true; o.status = ""; redraw(); });
     peer.on("error", err => {
         if (online !== o) return;
@@ -409,10 +412,10 @@ function scheduleBroadcast() {
 function joinRoom(code) {
     code = (code || "").trim().toUpperCase();
     if (!code) return;
-    if (typeof Peer === "undefined") { alert("Онлайн сан ачаалагдсангүй. Интернэтээ шалгана уу."); return; }
+    const P = PeerImpl(); if (!P) { alert("Онлайн сан ачаалагдсангүй. Интернэтээ шалгана уу."); return; }
     leaveOnline(); resetLocal(); keepAwake();
     const o = online = { role: "guest", code, seat: -1, n: 1, idx: 0, status: "Холбогдож байна...", failed: false, connected: false };
-    const peer = o.peer = new Peer(PEER_OPTS);
+    const peer = o.peer = new P(PEER_OPTS);
     peer.on("error", err => {
         if (online !== o) return;
         if (o.connected && SIGNAL_ERRORS.includes(err.type)) return;  // холбогдсоны дараа сервер шаардлагагүй
